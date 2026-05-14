@@ -2,203 +2,170 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>SISTEMA CENTRAL - EXCLUSIVE ACCESS</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SISTEMA V32 | CIPHER TERMINAL</title>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, collection, query, where, onSnapshot, limit, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyAIjGC3dwcfAy-IbkVavAw2WaAbttPZGts",
+            authDomain: "centrodemando-bb72f.firebaseapp.com",
+            projectId: "centrodemando-bb72f",
+            storageBucket: "centrodemando-bb72f.firebasestorage.app",
+            messagingSenderId: "479731068850",
+            appId: "1:479731068850:web:cb4072a205d1853f1e7eab"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        let unsubscribe = null;
+
+        window.autenticar = async () => {
+            const u = document.getElementById('u').value.trim();
+            const p = document.getElementById('p').value.trim();
+            const q = query(collection(db, "Usuarios"), where("Usuario", "==", u), where("Contraseña", "==", p));
+            const snap = await getDocs(q);
+            
+            if (!snap.empty) {
+                const userData = snap.docs[0].data();
+                // GUARDAMOS EL OBJETO COMPLETO DE USUARIO PARA CHEQUEAR PERMISOS POR CATEGORÍA
+                sessionStorage.setItem('v32_permisos', JSON.stringify(userData));
+                
+                document.getElementById('login-screen').style.display = 'none';
+                document.getElementById('main-app').style.display = 'block';
+                document.getElementById('op-name').innerText = userData.Usuario.toUpperCase();
+                cargarCategoria('general'); 
+            } else { alert("ACCESS_DENIED: Credenciales no válidas."); }
+        };
+
+        window.cargarCategoria = (cat) => {
+            const permisos = JSON.parse(sessionStorage.getItem('v32_permisos'));
+            
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            if(event) event.target.classList.add('active');
+
+            const feed = document.getElementById('feed');
+
+            // CONTROL DE ACCESO EXTRAOFICIAL (Si el permiso en Firebase es false o no existe, no carga)
+            if (cat !== 'general' && !permisos[cat]) {
+                feed.innerHTML = `
+                    <div style="text-align:center; padding:60px 20px; opacity:0.3;">
+                        <h2 style="letter-spacing:2px; font-size:0.8rem;">SIN_DATOS_DISPONIBLES</h2>
+                        <p style="font-size:0.6rem;">Sincronización de flujo de red no autorizada para este terminal.</p>
+                    </div>`;
+                return;
+            }
+
+            if (unsubscribe) unsubscribe();
+            const colRef = collection(db, "mercado_real");
+            let q = cat === 'general' ? query(colRef, limit(40)) : query(colRef, where("categoria", "==", cat), limit(40));
+
+            unsubscribe = onSnapshot(q, (snap) => {
+                feed.innerHTML = "";
+                if(snap.empty) {
+                    feed.innerHTML = "<p style='text-align:center; opacity:0.5; font-size:0.7rem;'>SISTEMA: ESPERANDO_DATOS...</p>";
+                }
+                snap.forEach(doc => {
+                    const d = doc.data();
+                    const cEUR = ((d.costo_y || 0) * 0.13).toFixed(2);
+                    const profit = ((d.venta_e || 0) - cEUR).toFixed(2);
+                    feed.innerHTML += `
+                        <div class="card">
+                            <div class="card-header">
+                                <span class="tag">${d.categoria?.toUpperCase() || 'RAW_DATA'}</span>
+                                <span class="profit-tag">+€${profit} PROFIT</span>
+                            </div>
+                            <div class="card-title">${d.nombre}</div>
+                            <div class="card-body-data">
+                                <div class="data-row"><span>ID_RASTREO:</span> <b>#V32-${doc.id.substring(0,6).toUpperCase()}</b></div>
+                                <div class="data-row"><span>PROVEEDOR:</span> <b>${d.proveedor}</b></div>
+                            </div>
+                            <div class="price-bar">
+                                <div class="price-item">FÁB: <b>€${cEUR}</b></div>
+                                <div class="price-item">PVP: <b>€${d.venta_e}</b></div>
+                                <a href="${d.url}" target="_blank" class="action-btn">RECLAMAR</a>
+                            </div>
+                        </div>`;
+                });
+            });
+        };
+    </script>
     <style>
-        :root {
-            --gold: #ffcc00;
-            --gold-glow: rgba(255, 204, 0, 0.3);
-            --bg: #0d0d0d;
-            --panel: #151515;
-        }
-
-        body {
-            font-family: 'Courier New', Courier, monospace;
-            background-color: var(--bg);
-            color: var(--gold);
-            margin: 0;
-            overflow-x: hidden;
-        }
-
-        /* Efecto de Escaneo de Pantalla */
-        body::before {
-            content: " ";
-            position: fixed;
-            top: 0; left: 0; bottom: 0; right: 0;
-            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), 
-                        linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
-            z-index: 2;
-            background-size: 100% 2px, 3px 100%;
-            pointer-events: none;
-        }
-
-        .container {
-            padding: 40px;
-            max-width: 1100px;
-            margin: auto;
-            position: relative;
-            z-index: 3;
-        }
-
-        /* LOGIN */
-        .login-box {
-            border: 2px solid var(--gold);
-            padding: 30px;
-            text-align: center;
-            box-shadow: 0 0 15px var(--gold-glow);
-            margin-top: 15vh;
-            background: var(--panel);
-        }
-
-        input {
-            background: transparent;
-            border: 1px solid var(--gold);
-            color: var(--gold);
-            padding: 10px;
-            font-family: 'Courier New', monospace;
-            text-align: center;
-            outline: none;
-            text-transform: uppercase;
-        }
-
-        button {
-            background: var(--gold);
-            color: black;
-            border: none;
-            padding: 10px 25px;
-            font-weight: bold;
-            cursor: pointer;
-            margin-top: 15px;
-            transition: 0.3s;
-        }
-
-        button:hover {
-            box-shadow: 0 0 20px var(--gold);
-            transform: scale(1.05);
-        }
-
-        /* DASHBOARD */
-        .header-title {
-            border-bottom: 1px solid var(--gold);
-            padding-bottom: 10px;
-            margin-bottom: 30px;
-            letter-spacing: 5px;
-        }
-
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 25px;
-        }
-
-        .card {
-            background: rgba(25, 25, 25, 0.8);
-            border: 1px solid var(--gold);
-            padding: 20px;
-            position: relative;
-            box-shadow: 0 0 5px var(--gold-glow);
-        }
-
-        .card::after {
-            content: "SECURED";
-            position: absolute;
-            top: 5px; right: 5px;
-            font-size: 8px;
-            opacity: 0.5;
-        }
-
-        .status-on { color: #00ff00; text-shadow: 0 0 5px #00ff00; }
+        :root { --gold: #ffcc00; --bg: #030303; --card: #0c0c0c; --border: #1a1a1a; }
+        * { box-sizing: border-box; font-family: 'Courier New', monospace; }
+        body { background: var(--bg); color: var(--gold); margin: 0; overflow-x: hidden; }
         
-        /* CONSOLA DE COMPRA AUTOMÁTICA */
-        .console {
-            background: #000;
-            border: 1px solid var(--gold);
-            height: 200px;
-            overflow-y: auto;
-            padding: 15px;
-            font-size: 12px;
-            margin-top: 20px;
-            box-shadow: inset 0 0 10px #000;
-        }
+        .scanline { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(rgba(18,16,16,0) 50%, rgba(0,0,0,0.1) 50%); background-size: 100% 4px; pointer-events: none; z-index: 100; }
+        #login-screen { height: 100vh; display: flex; justify-content: center; align-items: center; padding: 20px; }
+        .login-box { border: 1px solid var(--gold); padding: 30px; width: 100%; max-width: 350px; background: var(--card); text-align: center; }
+        .cipher-logo { width: 80px; height: auto; display: block; margin: 0 auto 20px auto; filter: drop-shadow(0 0 5px var(--gold)); }
+        input { width: 100%; background: #000; border: 1px solid var(--border); color: var(--gold); padding: 15px; margin-bottom: 15px; outline: none; text-align: center; }
+        
+        #main-app { display: none; }
+        header { display: flex; align-items: center; justify-content: space-between; padding: 10px 20px; border-bottom: 1px solid var(--gold); }
+        .header-logo { width: 30px; height: auto; }
+        .op-status { font-size: 0.6rem; color: #444; text-align: right; }
 
-        .hidden { display: none; }
+        .tabs-container { display: flex; overflow-x: auto; background: #000; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 50; scrollbar-width: none; }
+        .tabs-container::-webkit-scrollbar { display: none; }
+        .tab { padding: 15px 20px; white-space: nowrap; font-size: 0.7rem; font-weight: bold; color: #555; cursor: pointer; border-bottom: 2px solid transparent; text-transform: uppercase; }
+        .tab.active { color: var(--gold); border-bottom: 2px solid var(--gold); background: #0a0a0a; }
+
+        #feed { padding: 15px; padding-bottom: 80px; }
+        .card { background: var(--card); border: 1px solid var(--border); border-left: 4px solid var(--gold); padding: 15px; margin-bottom: 20px; position: relative; overflow: hidden; }
+        .card::after { content: "V32_CIPHER"; position: absolute; right: 5px; bottom: 5px; font-size: 0.4rem; opacity: 0.2; }
+        
+        .card-header { display: flex; justify-content: space-between; margin-bottom: 10px; }
+        .tag { font-size: 0.55rem; color: #555; border: 1px solid #222; padding: 2px 5px; }
+        .profit-tag { color: #0f0; font-weight: bold; font-size: 0.75rem; }
+        .card-title { font-size: 0.9rem; color: #fff; font-weight: bold; margin-bottom: 12px; }
+        .data-row { font-size: 0.7rem; color: #888; display: flex; justify-content: space-between; margin-bottom: 4px; }
+        .price-bar { display: flex; align-items: center; justify-content: space-between; background: #000; padding: 10px; border: 1px solid #111; margin-top: 10px; }
+        .price-item { font-size: 0.65rem; color: #444; }
+        .price-item b { color: var(--gold); }
+        .action-btn { background: var(--gold); color: #000; text-decoration: none; padding: 8px 12px; font-size: 0.6rem; font-weight: bold; }
     </style>
 </head>
 <body>
+    <div class="scanline"></div>
 
-    <div class="container">
-        <!-- ACCESO -->
-        <div id="login" class="login-box">
-            <h1 style="letter-spacing: 10px;">ID ENTITY</h1>
-            <input type="password" id="pass" placeholder="PASSWORD_REQUIRED">
-            <br>
-            <button onclick="acceder()">LOGIN</button>
-        </div>
-
-        <!-- VISTA CLIENTE -->
-        <div id="vista-cliente" class="hidden">
-            <h2 class="header-title">CATÁLOGO EXCLUSIVO</h2>
-            <div class="grid" id="market-list">
-                <div class="card">
-                    <h3>COLECCIÓN INVIERNO</h3>
-                    <p>PROVEEDOR: NORDIC TEXTILES</p>
-                    <p>STATUS: <span class="status-on">EN STOCK</span></p>
-                </div>
-            </div>
-        </div>
-
-        <!-- VISTA CREADOR (MAESTRO) -->
-        <div id="vista-creador" class="hidden">
-            <h2 class="header-title">MAINFRAME - CONTROL MAESTRO</h2>
-            <div class="grid">
-                <div class="card">
-                    <h3>SISTEMA DE COMPRA</h3>
-                    <p>ALGORITMO: <span class="status-on">AUTÓNOMO</span></p>
-                    <p>ÓRDENES HOY: <span id="orders">142</span></p>
-                </div>
-                <div class="card">
-                    <h3>ANÁLISIS DE MERCADO</h3>
-                    <p>PROVEEDORES: 24 CONECTADOS</p>
-                    <p>TENDENCIA: TEXTIL PREMIUM ▲</p>
-                </div>
-            </div>
-
-            <h3>REGISTRO DE TRANSACCIONES AUTOMATIZADAS</h3>
-            <div class="console" id="log">
-                > INICIALIZANDO NÚCLEO...<br>
-                > CONECTANDO CON PROVEEDORES GLOBALES...<br>
-            </div>
+    <div id="login-screen">
+        <div class="login-box">
+            <img src="https://cdn.phototourl.com/free/2026-05-14-1fff3586-4e37-4a94-ad37-3bfa619669c0.png" alt="V32_CIPHER" class="cipher-logo">
+            <h2 style="margin-top:0; letter-spacing:4px; font-size: 1rem;">CIPHER_ACCESS</h2>
+            <input type="text" id="u" placeholder="OPERATOR_ID">
+            <input type="password" id="p" placeholder="PASS_KEY">
+            <button onclick="autenticar()" style="width:100%; background:var(--gold); color:#000; padding:15px; border:none; font-weight:bold; cursor:pointer; letter-spacing: 2px;">INITIALIZE</button>
         </div>
     </div>
 
-    <script>
-        function acceder() {
-            const p = document.getElementById('pass').value;
-            if(p === "Cliente" || p === "Creador") {
-                document.getElementById('login').classList.add('hidden');
-                if(p === "Cliente") document.getElementById('vista-cliente').classList.remove('hidden');
-                if(p === "Creador") {
-                    document.getElementById('vista-creador').classList.remove('hidden');
-                    iniciarSistemaAuto();
-                }
-            } else {
-                alert("ACCESS DENIED");
-            }
-        }
+    <div id="main-app">
+        <header>
+            <div style="display:flex; align-items:center; gap:10px;">
+                <img src="https://cdn.phototourl.com/free/2026-05-14-1fff3586-4e37-4a94-ad37-3bfa619669c0.png" class="header-logo">
+                <h1 style="margin:0; font-size:0.8rem; letter-spacing:4px;">V32_TERMINAL</h1>
+            </div>
+            <div class="op-status">
+                STATUS: <span style="color:#0f0;">ONLINE</span><br>
+                USER: <span id="op-name" style="color:var(--gold);">---</span>
+            </div>
+        </header>
+        
+        <div class="tabs-container">
+            <div class="tab active" onclick="cargarCategoria('general')">GENERAL</div>
+            <div class="tab" onclick="cargarCategoria('zapatillas')">ZAPATILLAS</div>
+            <div class="tab" onclick="cargarCategoria('camisetas')">CAMISETAS</div>
+            <div class="tab" onclick="cargarCategoria('pantalones')">PANTALONES</div>
+            <div class="tab" onclick="cargarCategoria('accesorios')">ACCESORIOS</div>
+            <div class="tab" onclick="cargarCategoria('futbol')">FÚTBOL</div>
+            <div class="tab" onclick="cargarCategoria('colonias')">PERFUMES</div>
+            <div class="tab" onclick="cargarCategoria('cinturones')">CINTURONES</div>
+            <div class="tab" onclick="cargarCategoria('relojes')">RELOJES</div>
+            <div class="tab" onclick="cargarCategoria('canales')">CANALES</div>
+        </div>
 
-        function iniciarSistemaAuto() {
-            const log = document.getElementById('log');
-            const items = ["Camisas Seda", "Pantalones Techwear", "Hoodies Oversize", "Calzado Urbano"];
-            const provs = ["Global_Ship", "Euro_Stitch", "Asia_Fabric"];
-
-            setInterval(() => {
-                const item = items[Math.floor(Math.random()*items.length)];
-                const prov = provs[Math.floor(Math.random()*provs.length)];
-                const div = document.createElement('div');
-                div.innerHTML = `> [${new Date().toLocaleTimeString()}] AUTO_PURCHASE: 50 units of ${item} via ${prov}... DONE.`;
-                log.appendChild(div);
-                log.scrollTop = log.scrollHeight;
-            }, 3000);
-        }
-    </script>
+        <div id="feed"></div>
+    </div>
 </body>
 </html>
